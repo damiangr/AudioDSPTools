@@ -13,6 +13,7 @@
 dsp::ImpulseResponse::ImpulseResponse(const char* fileName, const double sampleRate)
 : mWavState(dsp::wav::LoadReturnCode::ERROR_OTHER)
 , mSampleRate(sampleRate)
+, mRawAudioSampleRate(0.0) // Layer 10: Initialize to ensure wav::Load doesn't use garbage value
 {
   // Safety check: Prevent division by zero in _SetWeights()
   // This can happen if constructor is called before sample rate is initialized
