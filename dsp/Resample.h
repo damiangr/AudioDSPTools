@@ -38,9 +38,15 @@ template <typename T>
 void dsp::ResampleCubic(const std::vector<T>& inputs, const double originalSampleRate, const double desiredSampleRate,
                         const double tOutputStart, std::vector<T>& outputs)
 {
-  // CRITICAL: Protect against division by zero 
-  // This function divides by desiredSampleRate, so we must validate it first
-  if (desiredSampleRate <= 0.0 || originalSampleRate <= 0.0)
+  // CRITICAL: Protect against division by zero - COMPREHENSIVE CHECK
+  // Use volatile to prevent compiler optimization
+  volatile double safeDesiredRate = desiredSampleRate;
+  volatile double safeOriginalRate = originalSampleRate;
+  
+  // Check for: zero, negative, NaN, infinity
+  if (safeDesiredRate <= 0.0 || safeDesiredRate != safeDesiredRate || 
+      safeOriginalRate <= 0.0 || safeOriginalRate != safeOriginalRate ||
+      safeDesiredRate > 1e9 || safeOriginalRate > 1e9)  // Sanity check for unreasonable rates
   {
     // Cannot resample with invalid sample rates - return empty output
     outputs.clear();
