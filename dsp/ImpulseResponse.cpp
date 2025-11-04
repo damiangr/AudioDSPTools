@@ -14,6 +14,15 @@ dsp::ImpulseResponse::ImpulseResponse(const char* fileName, const double sampleR
 : mWavState(dsp::wav::LoadReturnCode::ERROR_OTHER)
 , mSampleRate(sampleRate)
 {
+  // Safety check: Prevent division by zero in _SetWeights()
+  // This can happen if constructor is called before sample rate is initialized
+  if (sampleRate <= 0.0)
+  {
+    // Mark as error and return without calling _SetWeights()
+    mWavState = dsp::wav::LoadReturnCode::ERROR_OTHER;
+    return;
+  }
+  
   // Try to load the WAV
   this->mWavState = dsp::wav::Load(fileName, this->mRawAudio, this->mRawAudioSampleRate);
   if (this->mWavState != dsp::wav::LoadReturnCode::SUCCESS)
@@ -30,6 +39,15 @@ dsp::ImpulseResponse::ImpulseResponse(const IRData& irData, const double sampleR
 : mWavState(dsp::wav::LoadReturnCode::SUCCESS)
 , mSampleRate(sampleRate)
 {
+  // Safety check: Prevent division by zero in _SetWeights()
+  // This can happen if constructor is called before sample rate is initialized
+  if (sampleRate <= 0.0)
+  {
+    // Mark as error and return without calling _SetWeights()
+    mWavState = dsp::wav::LoadReturnCode::ERROR_OTHER;
+    return;
+  }
+  
   this->mRawAudio = irData.mRawAudio;
   this->mRawAudioSampleRate = irData.mRawAudioSampleRate;
   this->_SetWeights();
