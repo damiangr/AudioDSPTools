@@ -39,7 +39,7 @@ dsp::ImpulseResponse::ImpulseResponse(const IRData& irData, const double sampleR
 : mWavState(dsp::wav::LoadReturnCode::SUCCESS)
 , mSampleRate(sampleRate)
 {
-  // Safety check: Prevent division by zero in _SetWeights()
+  // Layer 3A Safety check: Prevent division by zero in _SetWeights()
   // This can happen if constructor is called before sample rate is initialized
   if (sampleRate <= 0.0)
   {
@@ -50,6 +50,17 @@ dsp::ImpulseResponse::ImpulseResponse(const IRData& irData, const double sampleR
   
   this->mRawAudio = irData.mRawAudio;
   this->mRawAudioSampleRate = irData.mRawAudioSampleRate;
+  
+  // Layer 6 Safety check: Validate IR data sample rate
+  // Embedded IR files might have corrupt or zero sample rate metadata
+  // This would cause division by zero in ResampleCubic's timeIncrement calculation
+  if (this->mRawAudioSampleRate <= 0.0 || this->mRawAudioSampleRate != this->mRawAudioSampleRate)
+  {
+    // Invalid IR sample rate - cannot proceed
+    mWavState = dsp::wav::LoadReturnCode::ERROR_OTHER;
+    return;
+  }
+  
   this->_SetWeights();
 }
 
