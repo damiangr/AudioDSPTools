@@ -31,8 +31,20 @@ dsp::ImpulseResponse::ImpulseResponse(const char* fileName, const double sampleR
     ss << "Failed to load IR at " << fileName << std::endl;
   }
   else
+  {
+    // Layer 7: Validate WAV file's sample rate metadata
+    // WAV files can have corrupt or zero sample rate in their headers
+    // This would cause division by zero in ResampleCubic during _SetWeights()
+    if (this->mRawAudioSampleRate <= 0.0 || this->mRawAudioSampleRate != this->mRawAudioSampleRate)
+    {
+      // Invalid WAV sample rate - cannot proceed
+      mWavState = dsp::wav::LoadReturnCode::ERROR_OTHER;
+      return;
+    }
+    
     // Set the weights based on the raw audio.
     this->_SetWeights();
+  }
 }
 
 dsp::ImpulseResponse::ImpulseResponse(const IRData& irData, const double sampleRate)
