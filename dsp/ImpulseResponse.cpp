@@ -74,6 +74,15 @@ double** dsp::ImpulseResponse::Process(double** inputs, const size_t numChannels
 
 void dsp::ImpulseResponse::_SetWeights()
 {
+  // Layer 4 Safety check: Absolute last line of defense against division by zero
+  // This should never be reached if constructors are properly protected, but adding
+  // as a fail-safe in case _SetWeights() is called through an unexpected code path
+  if (mSampleRate <= 0.0)
+  {
+    // Cannot proceed safely - leave object in ERROR state
+    return;
+  }
+  
   if (this->mRawAudioSampleRate == mSampleRate)
   {
     this->mResampled.resize(this->mRawAudio.size());
