@@ -51,6 +51,7 @@ dsp::ImpulseResponse::ImpulseResponse(const char* fileName, const double sampleR
 dsp::ImpulseResponse::ImpulseResponse(const IRData& irData, const double sampleRate)
 : mWavState(dsp::wav::LoadReturnCode::SUCCESS)
 , mSampleRate(sampleRate)
+, mRawAudioSampleRate(0.0) // Layer 10B: Initialize before assignment from irData
 {
   // Layer 3A Safety check: Prevent division by zero in _SetWeights()
   // This can happen if constructor is called before sample rate is initialized
