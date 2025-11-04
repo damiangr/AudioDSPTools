@@ -74,12 +74,14 @@ double** dsp::ImpulseResponse::Process(double** inputs, const size_t numChannels
 
 void dsp::ImpulseResponse::_SetWeights()
 {
-  // Layer 4 Safety check: Absolute last line of defense against division by zero
-  // This should never be reached if constructors are properly protected, but adding
-  // as a fail-safe in case _SetWeights() is called through an unexpected code path
-  if (mSampleRate <= 0.0)
+  // Layer 4 Safety check: MUST be at the very beginning before ANY operations
+  // This protects against ResampleCubic division by zero AND gain calculation
+  // Use volatile to prevent compiler from optimizing away this check
+  volatile double safeSampleRate = mSampleRate;
+  if (safeSampleRate <= 0.0 || safeSampleRate != safeSampleRate) // Check for <= 0 and NaN
   {
     // Cannot proceed safely - leave object in ERROR state
+    mWavState = dsp::wav::LoadReturnCode::ERROR_OTHER;
     return;
   }
   
@@ -90,7 +92,7 @@ void dsp::ImpulseResponse::_SetWeights()
   }
   else
   {
-    // Cubic resampling
+    // Cubic resampling - REQUIRES valid sample rate (division by mSampleRate inside)
     std::vector<float> padded;
     padded.resize(this->mRawAudio.size() + 2);
     padded[0] = 0.0f;

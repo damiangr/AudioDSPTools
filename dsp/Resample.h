@@ -38,6 +38,15 @@ template <typename T>
 void dsp::ResampleCubic(const std::vector<T>& inputs, const double originalSampleRate, const double desiredSampleRate,
                         const double tOutputStart, std::vector<T>& outputs)
 {
+  // CRITICAL: Protect against division by zero 
+  // This function divides by desiredSampleRate, so we must validate it first
+  if (desiredSampleRate <= 0.0 || originalSampleRate <= 0.0)
+  {
+    // Cannot resample with invalid sample rates - return empty output
+    outputs.clear();
+    return;
+  }
+  
   if (tOutputStart < 0.0)
     throw std::runtime_error("Starting time must be non-negative");
 
