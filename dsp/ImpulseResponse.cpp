@@ -13,7 +13,15 @@
 dsp::ImpulseResponse::ImpulseResponse(const char* fileName, const double sampleRate)
 : mWavState(dsp::wav::LoadReturnCode::ERROR_OTHER)
 , mSampleRate(sampleRate)
+, mRawAudioSampleRate(0.0) // Initialize to prevent undefined behavior
 {
+  // Validate sample rate before operations that could divide by zero
+  if (sampleRate <= 0.0)
+  {
+    mWavState = dsp::wav::LoadReturnCode::ERROR_OTHER;
+    return;
+  }
+
   // Try to load the WAV
   this->mWavState = dsp::wav::Load(fileName, this->mRawAudio, this->mRawAudioSampleRate);
   if (this->mWavState != dsp::wav::LoadReturnCode::SUCCESS)
@@ -22,16 +30,40 @@ dsp::ImpulseResponse::ImpulseResponse(const char* fileName, const double sampleR
     ss << "Failed to load IR at " << fileName << std::endl;
   }
   else
+  {
+    // Validate loaded sample rate before resampling
+    if (this->mRawAudioSampleRate <= 0.0)
+    {
+      mWavState = dsp::wav::LoadReturnCode::ERROR_OTHER;
+      return;
+    }
     // Set the weights based on the raw audio.
     this->_SetWeights();
+  }
 }
 
 dsp::ImpulseResponse::ImpulseResponse(const IRData& irData, const double sampleRate)
 : mWavState(dsp::wav::LoadReturnCode::SUCCESS)
 , mSampleRate(sampleRate)
+, mRawAudioSampleRate(0.0) // Initialize before assignment
 {
+  // Validate sample rate before operations that could divide by zero
+  if (sampleRate <= 0.0)
+  {
+    mWavState = dsp::wav::LoadReturnCode::ERROR_OTHER;
+    return;
+  }
+
   this->mRawAudio = irData.mRawAudio;
   this->mRawAudioSampleRate = irData.mRawAudioSampleRate;
+
+  // Validate IR sample rate before resampling
+  if (this->mRawAudioSampleRate <= 0.0)
+  {
+    mWavState = dsp::wav::LoadReturnCode::ERROR_OTHER;
+    return;
+  }
+
   this->_SetWeights();
 }
 
@@ -56,6 +88,13 @@ double** dsp::ImpulseResponse::Process(double** inputs, const size_t numChannels
 
 void dsp::ImpulseResponse::_SetWeights()
 {
+  // Validate sample rate to prevent division by zero
+  if (mSampleRate <= 0.0)
+  {
+    mWavState = dsp::wav::LoadReturnCode::ERROR_OTHER;
+    return;
+  }
+
   if (this->mRawAudioSampleRate == mSampleRate)
   {
     this->mResampled.resize(this->mRawAudio.size());
