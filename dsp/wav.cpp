@@ -478,3 +478,193 @@ void dsp::wav::_LoadSamples32FixedPoint(std::ifstream& wavFile, const int chunkS
   for (auto i = 0; i < samples.size(); i++)
     samples[i] = scale * ((float)tmp[i]);
 }
+
+// ============================================================================
+// Memory buffer versions for loading from embedded data
+// ============================================================================
+
+void dsp::wav::_LoadSamples16(const uint8_t* data, const int chunkSize, std::vector<float>& samples)
+{
+  const float scale = 1.0f / ((float)(1 << 15));
+  samples.resize(chunkSize / 2);
+  for (size_t i = 0; i < samples.size(); i++)
+  {
+    int16_t sample = *reinterpret_cast<const int16_t*>(&data[i * 2]);
+    samples[i] = scale * ((float)sample);
+  }
+}
+
+void dsp::wav::_LoadSamples24(const uint8_t* data, const int chunkSize, std::vector<float>& samples)
+{
+  const float scale = 1.0f / ((float)(1 << 23));
+  samples.resize(chunkSize / 3);
+  for (size_t i = 0; i < samples.size(); i++)
+  {
+    int value = data[i * 3] | (data[i * 3 + 1] << 8) | (data[i * 3 + 2] << 16);
+    if (value & (1 << 23))
+      value |= ~((1 << 24) - 1);
+    samples[i] = scale * ((float)value);
+  }
+}
+
+void dsp::wav::_LoadSamples32FloatingPoint(const uint8_t* data, const int chunkSize, std::vector<float>& samples)
+{
+  samples.resize(chunkSize / 4);
+  memcpy(samples.data(), data, chunkSize);
+}
+
+void dsp::wav::_LoadSamples32FixedPoint(const uint8_t* data, const int chunkSize, std::vector<float>& samples)
+{
+  const float scale = 1.0f / ((float)(1 << 31));
+  samples.resize(chunkSize / 4);
+  for (size_t i = 0; i < samples.size(); i++)
+  {
+    int32_t sample = *reinterpret_cast<const int32_t*>(&data[i * 4]);
+    samples[i] = scale * ((float)sample);
+  }
+}
+
+dsp::wav::LoadReturnCode dsp::wav::Load(const uint8_t* data, size_t dataSize, std::vector<float>& audio, double& sampleRate)
+{
+  if (dataSize < 44)
+    return LoadReturnCode::ERROR_INVALID_FILE;
+
+  size_t pos = 0;
+
+  // Helper lambdas
+  auto ReadU32 = [&]() -> uint32_t {
+    uint32_t val = *reinterpret_cast<const uint32_t*>(&data[pos]);
+    pos += 4;
+    return val;
+  };
+  auto ReadU16 = [&]() -> uint16_t {
+    uint16_t val = *reinterpret_cast<const uint16_t*>(&data[pos]);
+    pos += 2;
+    return val;
+  };
+  auto ReadI16 = [&]() -> int16_t {
+    int16_t val = *reinterpret_cast<const int16_t*>(&data[pos]);
+    pos += 2;
+    return val;
+  };
+  auto ReadI32 = [&]() -> int32_t {
+    int32_t val = *reinterpret_cast<const int32_t*>(&data[pos]);
+    pos += 4;
+    return val;
+  };
+
+  // Check RIFF header
+  if (data[0] != 'R' || data[1] != 'I' || data[2] != 'F' || data[3] != 'F')
+    return LoadReturnCode::ERROR_NOT_RIFF;
+  pos = 4;
+  
+  uint32_t riffSize = ReadU32();
+  (void)riffSize; // Not used but read to advance position
+  
+  // Check WAVE format
+  if (data[pos] != 'W' || data[pos + 1] != 'A' || data[pos + 2] != 'V' || data[pos + 3] != 'E')
+    return LoadReturnCode::ERROR_NOT_WAVE;
+  pos += 4;
+
+  // Parse chunks
+  bool fmtFound = false;
+  bool dataFound = false;
+  uint16_t audioFormat = 0;
+  uint16_t numChannels = 0;
+  uint16_t bitsPerSample = 0;
+  uint16_t extensibleSubFormat = 0;
+
+  while (pos < dataSize - 8 && !dataFound)
+  {
+    char chunkId[5] = {0};
+    memcpy(chunkId, &data[pos], 4);
+    pos += 4;
+    uint32_t chunkSize = ReadU32();
+
+    if (strncmp(chunkId, "fmt ", 4) == 0)
+    {
+      if (chunkSize < 16 || pos + chunkSize > dataSize)
+        return LoadReturnCode::ERROR_INVALID_FILE;
+      
+      size_t fmtStart = pos;
+      audioFormat = ReadU16();
+      numChannels = ReadU16();
+      uint32_t sr = ReadU32();
+      sampleRate = (double)sr;
+      ReadU32(); // byteRate
+      ReadU16(); // blockAlign
+      bitsPerSample = ReadU16();
+
+      if (numChannels != 1)
+        return LoadReturnCode::ERROR_NOT_MONO;
+
+      std::unordered_set<unsigned short> supportedFormats{AUDIO_FORMAT_PCM, AUDIO_FORMAT_IEEE, AUDIO_FORMAT_EXTENSIBLE};
+      if (supportedFormats.find(audioFormat) == supportedFormats.end())
+      {
+        if (audioFormat == AUDIO_FORMAT_ALAW)
+          return LoadReturnCode::ERROR_UNSUPPORTED_FORMAT_ALAW;
+        if (audioFormat == AUDIO_FORMAT_MULAW)
+          return LoadReturnCode::ERROR_UNSUPPORTED_FORMAT_MULAW;
+        return LoadReturnCode::ERROR_UNSUPPORTED_FORMAT_OTHER;
+      }
+
+      if (audioFormat == AUDIO_FORMAT_EXTENSIBLE && chunkSize >= 40)
+      {
+        pos = fmtStart + 16;
+        ReadU16(); // cbSize
+        ReadU16(); // validBitsPerSample
+        ReadU32(); // channelMask
+        extensibleSubFormat = data[pos] | (data[pos + 1] << 8);
+      }
+
+      pos = fmtStart + chunkSize + (chunkSize % 2);
+      fmtFound = true;
+    }
+    else if (strncmp(chunkId, "data", 4) == 0)
+    {
+      if (!fmtFound)
+        return LoadReturnCode::ERROR_MISSING_FMT;
+      
+      if (pos + chunkSize > dataSize)
+        return LoadReturnCode::ERROR_INVALID_FILE;
+
+      const uint8_t* audioData = &data[pos];
+      int effectiveFormat = (audioFormat == AUDIO_FORMAT_EXTENSIBLE) ? extensibleSubFormat : audioFormat;
+
+      if (effectiveFormat == AUDIO_FORMAT_IEEE)
+      {
+        if (bitsPerSample == 32)
+          dsp::wav::_LoadSamples32FloatingPoint(audioData, chunkSize, audio);
+        else
+          return LoadReturnCode::ERROR_UNSUPPORTED_BITS_PER_SAMPLE;
+      }
+      else if (effectiveFormat == AUDIO_FORMAT_PCM)
+      {
+        if (bitsPerSample == 16)
+          dsp::wav::_LoadSamples16(audioData, chunkSize, audio);
+        else if (bitsPerSample == 24)
+          dsp::wav::_LoadSamples24(audioData, chunkSize, audio);
+        else if (bitsPerSample == 32)
+          dsp::wav::_LoadSamples32FixedPoint(audioData, chunkSize, audio);
+        else
+          return LoadReturnCode::ERROR_UNSUPPORTED_BITS_PER_SAMPLE;
+      }
+      else
+      {
+        return LoadReturnCode::ERROR_UNSUPPORTED_FORMAT_OTHER;
+      }
+
+      dataFound = true;
+    }
+    else
+    {
+      // Skip unknown chunks
+      pos += chunkSize + (chunkSize % 2);
+    }
+  }
+
+  if (!dataFound)
+    return LoadReturnCode::ERROR_INVALID_FILE;
+
+  return LoadReturnCode::SUCCESS;
+}

@@ -23,6 +23,8 @@ public:
   struct IRData;
   ImpulseResponse(const char* fileName, const double sampleRate);
   ImpulseResponse(const IRData& irData, const double sampleRate);
+  // Load from raw WAV bytes (for embedded data)
+  ImpulseResponse(const std::vector<uint8_t>& wavData, const double sampleRate);
   double** Process(double** inputs, const size_t numChannels, const size_t numFrames) override;
   IRData GetData();
   double GetSampleRate() const { return mSampleRate; };

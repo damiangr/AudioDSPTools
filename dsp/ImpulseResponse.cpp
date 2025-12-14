@@ -35,6 +35,16 @@ dsp::ImpulseResponse::ImpulseResponse(const IRData& irData, const double sampleR
   this->_SetWeights();
 }
 
+dsp::ImpulseResponse::ImpulseResponse(const std::vector<uint8_t>& wavData, const double sampleRate)
+: mWavState(dsp::wav::LoadReturnCode::ERROR_OTHER)
+, mSampleRate(sampleRate)
+{
+  // Load WAV from memory buffer
+  this->mWavState = dsp::wav::Load(wavData.data(), wavData.size(), this->mRawAudio, this->mRawAudioSampleRate);
+  if (this->mWavState == dsp::wav::LoadReturnCode::SUCCESS)
+    this->_SetWeights();
+}
+
 double** dsp::ImpulseResponse::Process(double** inputs, const size_t numChannels, const size_t numFrames)
 {
   this->_PrepareBuffers(numChannels, numFrames);
